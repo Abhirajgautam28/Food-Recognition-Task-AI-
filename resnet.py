@@ -8,8 +8,9 @@ import torchvision
 import torchvision.transforms as transforms
 from torchvision import datasets, models
 from torch.utils.data import DataLoader, random_split
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from PIL import Image
+from tqdm import tqdm
 
 # Section 1: Dataset Analysis and Preprocessing
 
@@ -58,8 +59,8 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 
-# Train the model
-def train_model(model, criterion, optimizer, num_epochs=10):
+# Train the model with tqdm progress bar
+def train_model_with_progress(model, criterion, optimizer, num_epochs=10):
     for epoch in range(num_epochs):
         print(f'Epoch {epoch + 1}/{num_epochs}')
         print('-' * 10)
@@ -68,7 +69,8 @@ def train_model(model, criterion, optimizer, num_epochs=10):
         running_loss = 0.0
         correct_predictions = 0
 
-        for inputs, labels in train_loader:
+        progress_bar = tqdm(enumerate(train_loader), total=len(train_loader))
+        for batch_idx, (inputs, labels) in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -83,33 +85,25 @@ def train_model(model, criterion, optimizer, num_epochs=10):
             running_loss += loss.item() * inputs.size(0)
             correct_predictions += torch.sum(preds == labels.data)
 
-        epoch_loss = running_loss / len(train_dataset)
-        epoch_acc = correct_predictions.double() / len(train_dataset)
+            epoch_loss = running_loss / ((batch_idx + 1) * len(inputs))
+            epoch_acc = correct_predictions.double() / ((batch_idx + 1) * len(inputs))
+
+            progress_bar.set_postfix(loss=epoch_loss, accuracy=epoch_acc)
 
         print(f'Train Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
     return model
 
 
-# Train the model
-trained_model = train_model(model, criterion, optimizer)
-
-# Save the trained model
-model_save_path = "E:/Applite/Demo work/Source Code/resnet_model.pth"
-torch.save(trained_model.state_dict(), model_save_path)
-print(f"Model saved at: {model_save_path}")
-
-
-# Section 3: Evaluation and Testing
-
-# Evaluation
-def evaluate_model(model, dataloader):
+# Evaluate the model with tqdm progress bar
+def evaluate_model_with_progress(model, dataloader):
     model.eval()
     y_true = []
     y_pred = []
 
+    progress_bar = tqdm(enumerate(dataloader), total=len(dataloader))
     with torch.no_grad():
-        for inputs, labels in dataloader:
+        for batch_idx, (inputs, labels) in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
 
             outputs = model(inputs)
@@ -118,22 +112,33 @@ def evaluate_model(model, dataloader):
             y_true.extend(labels.cpu().numpy())
             y_pred.extend(preds.cpu().numpy())
 
+            if batch_idx == len(dataloader) - 1:
+                progress_bar.set_postfix(accuracy=accuracy_score(y_true, y_pred))
+
     return y_true, y_pred
 
 
-# Evaluate the model on test data
-y_true, y_pred = evaluate_model(trained_model, test_loader)
+# Train the model with tqdm progress
+trained_model = train_model_with_progress(model, criterion, optimizer)
+
+# Save the trained model
+model_save_path = "E:/Applite/Demo work/Source Code/resnet_model.pth"
+torch.save(trained_model.state_dict(), model_save_path)
+print(f"Model saved at: {model_save_path}")
+
+# Evaluate the model on test data with tqdm progress
+y_true, y_pred = evaluate_model_with_progress(trained_model, test_loader)
 
 # Classification report
-print(classification_report(y_true, y_pred, target_names=train_dataset.classes))
+print(classification_report(y_true, y_pred, target_names=dataset.classes))
 
 # Confusion matrix
 conf_matrix = confusion_matrix(y_true, y_pred)
 plt.figure(figsize=(10, 8))
 plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
 plt.colorbar()
-plt.xticks(np.arange(len(train_dataset.classes)), train_dataset.classes, rotation=90)
-plt.yticks(np.arange(len(train_dataset.classes)), train_dataset.classes)
+plt.xticks(np.arange(len(dataset.classes)), dataset.classes, rotation=90)  # Use dataset.classes
+plt.yticks(np.arange(len(dataset.classes)), dataset.classes)  # Use dataset.classes
 plt.xlabel('Predicted')
 plt.ylabel('True')
 plt.title('Confusion Matrix')
@@ -143,7 +148,7 @@ plt.show()
 # Visualize predictions on sample images
 def visualize_predictions(model, loader, num_images=5):
     model.eval()
-    classes = train_dataset.classes
+    classes = dataset.classes  # Use dataset.classes
 
     with torch.no_grad():
         for inputs, labels in loader:
@@ -169,3 +174,4 @@ def visualize_predictions(model, loader, num_images=5):
 
 # Visualize predictions on sample images from test dataset
 visualize_predictions(trained_model, test_loader)
+
